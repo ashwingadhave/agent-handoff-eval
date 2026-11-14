@@ -2,7 +2,7 @@
 
 Test whether an AI agent hands a conversation to a human on the right turn, and whether it does that every time.
 
-The agent works on public [τ²-bench](https://github.com/sierra-research/tau2-bench) tasks. It reaches the task's tools only through an MCP server, so a handoff is a recorded `transfer_to_human_agents` tool call, not a sentence the agent says. Each conversation is scored turn by turn with an escalation correctness metric for [TruLens](https://github.com/truera/trulens), and each task is run several times to measure pass^k.
+The agent works on public [τ²-bench](https://github.com/sierra-research/tau2-bench) tasks. It reaches the task's tools only through an MCP server, so a handoff is a recorded `transfer_to_human_agents` tool call, not a sentence the agent says. Each conversation is scored turn by turn with an escalation correctness metric for [TruLens](https://github.com/truera/trulens), and each task is run several times; MLflow tracks the repeats and computes pass^k.
 
 ## What is in this repo
 
@@ -10,7 +10,8 @@ The agent works on public [τ²-bench](https://github.com/sierra-research/tau2-b
 |---|---|
 | `tau2_mcp_server.py` | MCP server for one τ²-bench task (airline or retail). Serves the domain's tools and its policy as an MCP resource. Each server process starts from a fresh copy of the task's database. |
 | `run_conversations.py` | τ²-bench's simulated customer talks to a Claude agent that calls tools only through the MCP server. Saves each conversation as TruLens conversation records (`input`, `tool_calls`, `output` per turn), plus whether τ²-bench expects a transfer. |
-| `score.py` | Scores each saved conversation with TruLens `escalation_correctness_with_cot_reasons` and computes pass^k per task. |
+| `score.py` | Scores each saved conversation with TruLens `escalation_correctness_with_cot_reasons`. |
+| `consistency.py` | Logs the repeated runs to MLflow (one nested run per repeat, `mlflow.genai.evaluate`) and computes pass^k per task, for the TruLens verdict and for τ²-bench's expected action. |
 | `checks/tool_call_check.py` | Five hand-written conversations that check the metric reads a transfer tool call correctly: on time, promised but never called, one turn late, not needed, and a call that failed. |
 
 ## Tasks
@@ -60,7 +61,14 @@ cd path/to/trulens          # checkout of the PR branch, with its Poetry env ins
 poetry run python path/to/agent-handoff-eval/score.py runs/main
 ```
 
-pass^k for a task is C(c, k) / C(n, k), where c of n runs passed (from the [τ-bench paper](https://arxiv.org/abs/2406.12045)). It is the chance that k runs picked at random all pass.
+Then compute pass^k in MLflow:
+
+```bash
+python consistency.py runs/main
+mlflow ui --backend-store-uri sqlite:///mlflow.db   # browse the runs and per-conversation verdicts
+```
+
+`consistency.py` follows the "Measure consistency with repeated runs" example in the [MLflow evaluation docs](https://mlflow.org/docs/latest/genai/eval-monitor/running-evaluation/eval-examples/). pass^k for a task is C(c, k) / C(n, k), where c of n runs passed (from the [τ-bench paper](https://arxiv.org/abs/2406.12045)). It is the chance that k runs picked at random all pass. MLflow metric names cannot contain `^`, so the metrics are logged as `pass_hat_1` to `pass_hat_5`.
 
 ## Early results
 
